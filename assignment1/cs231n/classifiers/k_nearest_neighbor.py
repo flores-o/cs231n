@@ -77,7 +77,7 @@ class KNearestNeighbor(object):
         #                       END OF YOUR CODE                            #
         #####################################################################
 
-        dists[i, j] = np.sum((X[i] - self.X_train[j]) ** 2, axis = 0);
+        dists[i, j] = np.sum((X[i] - self.X_train[j]) ** 2);
     return dists
 
   def compute_distances_one_loop(self, X):
@@ -96,7 +96,18 @@ class KNearestNeighbor(object):
       # Compute the l2 distance between the ith test point and all training #
       # points, and store the result in dists[i, :].                        #
       #######################################################################
-      pass
+      #print(self.X_train[:].shape);
+      # print(self.X_train.shape[0])
+      #print(X[i] - self.X_train)
+      """
+      print("X", X.shape)
+      print("X[i]", X[i].shape)
+      print("self.X_train", self.X_train.shape)
+      print("X[i] - self.X_train", (X[i] - self.X_train).shape)
+      print("___________________________")
+      """
+
+      dists[i][:] = np.sum( (X[i] - self.X_train) ** 2, axis = 1) 
       #######################################################################
       #                         END OF YOUR CODE                            #
       #######################################################################
@@ -124,7 +135,16 @@ class KNearestNeighbor(object):
     # HINT: Try to formulate the l2 distance using matrix multiplication    #
     #       and two broadcast sums.                                         #
     #########################################################################
-    pass
+    #print((np.reshape(np.sum(X ** 2, axis = 1), (X.shape[0], 1))).shape)
+    #print((np.sum(self.X_train ** 2, axis = 1)).shape)
+    #print((np.dot(X, self.X_train.T)).shape)
+    #print("__________________________________")
+    #sum_te = np.sum(X ** 2, axis = 1)
+    #sum_tr = np.sum(self.X_train ** 2, axis = 1)
+    #product = np.dot(X, self.X_train.T)
+
+    #dists = np.reshape(sum_te, (-1, 1)) + sum_tr - 2 * product
+    dists = np.reshape(np.sum(X ** 2, axis = 1), (X.shape[0], 1)) + np.sum(self.X_train ** 2, axis = 1) - 2 * np.dot(X, self.X_train.T)
     #########################################################################
     #                         END OF YOUR CODE                              #
     #########################################################################
