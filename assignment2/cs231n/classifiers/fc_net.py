@@ -273,7 +273,11 @@ class FullyConnectedNet(object):
                 h, h_cache = affine_relu_forward(h, self.params['W' + s], self.params['b' + s])
 
             # Optional dropout
-            # ...
+            if self.use_dropout:
+                p = self.dropout_param['p']
+                dpo, dpo_cache = dropout_forward(h, self.dropout_param)
+                h = dpo
+                h_cache = (*h_cache, dpo_cache)
 
             # Update caches
             h_caches['h' + s] = h_cache
@@ -321,8 +325,11 @@ class FullyConnectedNet(object):
         for k in range(num_hidden_layers, 0, -1):
             s = str(k)
             # Optional dropout
-            # ...
-            #print("dx.shape, h_caches['h' + s]", dx.shape, h_caches['h' + s][1].shape)
+            if self.use_dropout:
+                dpo_cache = h_caches['h' + s][-1]
+                dx = dropout_backward(dx, dpo_cache)
+                h_caches['h' + s] = h_caches['h' + s][:-1]
+           
             if self.normalization:
                 dx, dw, db, dgamma, dbeta = affine_bn_relu_backward(dx, h_caches['h' + s])
                 grads['gamma' + s] = dgamma
