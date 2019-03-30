@@ -53,7 +53,39 @@ class ThreeLayerConvNet(object):
         # **the width and height of the input are preserved**. Take a look at      #
         # the start of the loss() function to see how that happens.                #                           
         ############################################################################
-        pass
+        C, H, W = input_dim
+
+        # (1) Conv - relu - max pool layer
+
+        # update parameters
+        self.params['W1'] = weight_scale * np.random.randn(num_filters, C, filter_size, filter_size)
+        self.params['b1'] = np.zeros(num_filters)
+
+        # conv layer dimnesions
+        S_conv = 1 # default stride
+        P = (filter_size - 1) / 2
+        H_conv = W_conv = 1 + (H + 2 * P - filter_size) / S_conv
+
+        # pool layer dimensions
+        S_pool = 2
+        pool_size = 2
+        H_pool = W_pool = (H_conv - pool_size) / S_pool + 1
+       
+        # Hout and Wout are floats after /
+        if all([int(H_pool) == H_pool, int(W_pool) == W_pool]):
+            H_pool = int(H_pool)
+            W_pool = int(W_pool)
+        else:
+            raise ValueError("Non-integer output size: {}x{}".format(H_pool, W_pool))
+
+        #(2) Affine - relu layer
+        self.params['W2'] = weight_scale * np.random.randn(num_filters * H_pool * W_pool, hidden_dim)
+        self.params['b2'] = np.zeros(hidden_dim)
+
+        #(3) Affine - softmax layer
+        self.params['W3'] = weight_scale * np.random.randn(hidden_dim, num_classes)
+        self.params['b3'] = np.zeros(num_classes)
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -89,7 +121,19 @@ class ThreeLayerConvNet(object):
         # Remember you can use the functions defined in cs231n/fast_layers.py and  #
         # cs231n/layer_utils.py in your implementation (already imported).         #
         ############################################################################
-        pass
+        # Feed into conv layer
+        c, c_cache = conv_relu_pool_forward(X, self.params['W1'], self.params['b1'], conv_param, pool_param)
+
+        # Reshape conv layer output into N number of 1 dimensional datasamplea
+        N, F, H_conv, W_conv = c.shape
+        c = c.reshape(N, F * H_conv * W_conv)
+
+        # Feed into hidden fc layer
+        h, h_cache = affine_relu_forward(c, self.params['W2'], self.params['b2'])
+
+        # Feed into output fc layer
+        scores, scores_cache = affine_forward(h, self.params['W3'], self.params['b3'])
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################
@@ -108,7 +152,31 @@ class ThreeLayerConvNet(object):
         # automated tests, make sure that your L2 regularization includes a factor #
         # of 0.5 to simplify the expression for the gradient.                      #
         ############################################################################
-        pass
+
+        W1, b1 = self.params['W1'], self.params['b1']
+        W2, b2 = self.params['W2'], self.params['b2']
+        W3, b3 = self.params['W3'], self.params['b3']
+        
+        loss, dscores = softmax_loss(scores, y)
+        loss += 0.5 * self.reg * np.sum(np.square(W1))
+        loss += 0.5 * self.reg * np.sum(np.square(W2))
+        loss += 0.5 * self.reg * np.sum(np.square(W3))
+                
+        dx3, dw3, db3 = affine_backward(dscores, scores_cache)
+        grads['W3'] = dw3 + self.reg * W3
+        grads['b3'] = db3
+        
+        dx2, dw2, db2 = affine_relu_backward(dx3, h_cache)
+        grads['W2'] = dw2 + self.reg * W2
+        grads['b2'] = db2
+        
+        dx2 = dx2.reshape(N, F, H_conv, W_conv)  # Resize again
+        dx1, dw1, db1 = conv_relu_pool_backward(dx2, c_cache)
+        grads['W1'] = dw1 + self.reg * W1
+        grads['b1'] = db1
+
+        
+
         ############################################################################
         #                             END OF YOUR CODE                             #
         ############################################################################

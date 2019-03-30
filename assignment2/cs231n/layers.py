@@ -578,7 +578,37 @@ def conv_forward_naive(x, w, b, conv_param):
     # TODO: Implement the convolutional forward pass.                         #
     # Hint: you can use the function np.pad for padding.                      #
     ###########################################################################
-    pass
+
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    P = conv_param['pad']
+    S = conv_param['stride']
+    Hout = 1 + (H + 2 * P - HH) / S
+    Wout = 1 + (W + 2 * P - WW) / S
+
+    if all([int(Hout) == Hout, int(Wout) == Wout]):
+        Hout = int(Hout)
+        Wout = int(Wout)
+    else:
+        raise ValueError("Non-integer output size: {}x{}".format(Hout, Wout))
+
+    # Pad: 0s added to N        C       H       W      axis 
+    x_pad = np.pad(x, ((0, 0), (0, 0), (P, P), (P, P)), 'constant', constant_values=0)
+
+    # Compute layer output
+    out = np.zeros((N, F, Hout, Wout))
+    for n in range(N):
+        img = x_pad[n, ...] # One image (C, H, W)
+        for f in range(F):
+            filter = w[f, ...] # Ine filter layer (C, HH, WW)
+            bf = b[f]
+            for ho in range(Hout):
+                for wo in range(Wout):
+                    # img slice through all chanels with space dims equal to filter space dim
+                    img_deep_slice = img[:, ho*S : ho*S+HH, wo*S : wo*S+WW]   # (C, HH, WW
+                    # Dot product image slice with filter layer and add bias
+                    out[n, f, ho, wo] = np.sum(img_deep_slice * filter) + bf
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -603,7 +633,51 @@ def conv_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the convolutional backward pass.                        #
     ###########################################################################
-    pass
+    # Taken from https://gitlab.com/me-learnz/CS231n/blob/master/assignment2/cs231n/layers.py; Thanks
+
+    # Adapted from lightaime's solutions:
+    # https://github.com/lightaime/cs231n/blob/master/assignment2/cs231n/layers.py#L449
+    # Backpropagation of convolution is also a convolution, see:
+    # http://cs231n.github.io/convolutional-networks/
+  
+    # Unpack variables
+    x, w, b, conv_param = cache  
+    N, C, H, W = x.shape
+    F, _, HH, WW = w.shape
+    S = conv_param['stride']
+    P = conv_param['pad']
+    Hout = 1 + (H + 2 * P - HH) / S
+    Wout = 1 + (W + 2 * P - WW) / S
+    
+    # Hout and Wout are floats after /
+    if all([int(Hout) == Hout, int(Wout) == Wout]):
+        Hout = int(Hout)
+        Wout = int(Wout)
+    else:
+        raise ValueError("Non-integer output size: {}x{}".format(Hout, Wout))
+  
+    # Pad: 0s added to   N      C      H      W   axis, to the (beginning, end)
+    x_pad = np.pad(x, ((0,0), (0,0), (P,P), (P,P)), 'constant', constant_values=0)
+    
+    dx = np.zeros_like(x)
+    dx_pad = np.zeros_like(x_pad)
+    dw = np.zeros_like(w)
+    db = np.zeros_like(b)
+  
+    # Compute gradients
+    db = np.sum(dout, axis = (0,2,3))
+        
+    for i in range(Hout):
+        for j in range(Wout):
+            x_pad_sub = x_pad[:, :, i*S:i*S+HH, j*S:j*S+WW]
+            for k in range(F): # compute dw
+                dw[k ,: ,: ,:] += \
+                  np.sum(x_pad_sub * (dout[:, k, i, j])[:, None, None, None], axis=0)
+            for n in range(N): # compute dx_pad (convolution)
+                dx_pad[n, :, i*S:i*S+HH, j*S:j*S+WW] += \
+                  np.sum((w[:, :, :, :] * (dout[n, :, i, j])[:,None ,None, None]), axis=0)
+    dx = dx_pad[:,:,P:-P,P:-P]
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
@@ -633,11 +707,47 @@ def max_pool_forward_naive(x, pool_param):
     ###########################################################################
     # TODO: Implement the max-pooling forward pass                            #
     ###########################################################################
-    pass
+    
+    # Unpack variables
+    N, C, H, W = x.shape
+    H_pool = pool_param['pool_height']
+    W_pool = pool_param['pool_width']
+    S = pool_param['stride']        
+    Hout = (H - H_pool) / S + 1
+    Wout = (W - W_pool) / S + 1
+    
+    # Hout and Wout are floats after /
+    if all([int(Hout) == Hout, int(Wout) == Wout]):
+        Hout = int(Hout)
+        Wout = int(Wout)
+    else:
+        raise ValueError("Non-integer output size: {}x{}".format(Hout, Wout))
+
+    out = np.zeros((N, C, Hout, Wout))
+    # Keeping track of activation indexes; contains a (act_h, act_w) tuple of each coordinate of out
+    act = np.zeros_like(out, dtype=np.ndarray)
+
+    for n in range(N):
+        img = x[n, ...]  # One image (C, H, W)
+        for ho in range(Hout):
+            for wo in range(Wout):
+                # Img slice through all channels with space dims equal to (H_pool, W_pool)
+                img_slice = img[:, ho*S : ho*S+H_pool, wo*S : wo*S+W_pool]  # (C, H_pool, W_pool)
+                for c in range(C):
+                    max_val = np.max(img_slice[c, ...])
+                    max_idx = np.argmax(img_slice[c, ...])
+
+                    out[n, c, ho, wo] = max_val
+
+                    # Activation locations for backpropagation
+                    act_h, act_w = np.array([ho*S, wo*S]) + np.unravel_index(max_idx, (H_pool, W_pool))
+                    act[n, c, ho, wo] = np.array([act_h, act_w])
+
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
-    cache = (x, pool_param)
+    cache = (x, act) # I changed this
     return out, cache
 
 
@@ -656,7 +766,20 @@ def max_pool_backward_naive(dout, cache):
     ###########################################################################
     # TODO: Implement the max-pooling backward pass                           #
     ###########################################################################
-    pass
+    # Unpack variables
+    x, act = cache
+    N, C, _, _ = x.shape
+    
+    dx = np.zeros_like(x)
+        
+    # Route dout to the max values
+    for n in range(N):
+        for c in range(C):
+            for (act_idx, dout_value) in zip(act[n, c, ...].flatten(), dout[n, c, ...].flatten()):
+                act_h, act_w = act_idx
+                dx[n, c, act_h, act_w] = dout_value
+    
+
     ###########################################################################
     #                             END OF YOUR CODE                            #
     ###########################################################################
